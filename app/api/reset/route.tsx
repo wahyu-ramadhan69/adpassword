@@ -3,6 +3,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
 import { Client } from "ldapts";
+import runCors from "../../lib/middleware";
 
 const execAsync = promisify(exec);
 
@@ -31,6 +32,7 @@ async function checkUserPassword(
 }
 
 export async function POST(req: NextRequest) {
+  await runCors(req, {} as any);
   const { username, oldPassword, newPassword } = await req.json();
 
   if (!username || !oldPassword || !newPassword) {
