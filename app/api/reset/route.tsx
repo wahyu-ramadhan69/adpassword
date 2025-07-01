@@ -2,13 +2,33 @@ import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
 import path from "path";
+import { Client } from "ldapts";
 
 const execAsync = promisify(exec);
 
 // Lokasi path relatif ke root project
 const SCRIPTS_DIR = path.resolve(process.cwd(), "scripts");
-const CHECK_SCRIPT = path.join(SCRIPTS_DIR, "checkpassword.ps1");
 const RESET_SCRIPT = path.join(SCRIPTS_DIR, "resetpassword.ps1");
+
+// Fungsi untuk validasi password lama via LDAP bind
+async function checkUserPassword(
+  username: string,
+  password: string
+): Promise<boolean> {
+  const client = new Client({
+    url: "ldap://192.168.29.12:389",
+  });
+
+  const userBind = `BCAFWIFI\\${username}`;
+
+  try {
+    await client.bind(userBind, password);
+    await client.unbind();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function POST(req: NextRequest) {
   const { username, oldPassword, newPassword } = await req.json();
@@ -20,21 +40,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // 1. Validasi password lama via LDAP
+  const isValid = await checkUserPassword(username, oldPassword);
+  if (!isValid) {
+    return NextResponse.json({ error: "Password lama salah" }, { status: 401 });
+  }
+
+  // 2. Jalankan reset password script
+  const resetCommand = `powershell.exe -ExecutionPolicy Bypass -File "${RESET_SCRIPT}" -username "${username}" -newPlainPassword "${newPassword}"`;
+
   try {
-    // 1. Cek password lama
-    const checkCommand = `powershell.exe -ExecutionPolicy Bypass -File "${CHECK_SCRIPT}" -username "${username}" -oldPassword "${oldPassword}"`;
-    const { stdout: checkOut } = await execAsync(checkCommand);
-    const checkResult = checkOut.trim().toLowerCase();
-
-    if (checkResult !== "success") {
-      return NextResponse.json(
-        { error: "Password lama salah" },
-        { status: 401 }
-      );
-    }
-
-    // 2. Jalankan reset password
-    const resetCommand = `powershell.exe -ExecutionPolicy Bypass -File "${RESET_SCRIPT}" -username "${username}" -newPlainPassword "${newPassword}"`;
     const { stdout: resetOut } = await execAsync(resetCommand);
     const resetResult = resetOut.trim().toLowerCase();
 
