@@ -24,7 +24,7 @@ async function checkUserPassword(
   password: string
 ): Promise<boolean> {
   const client = new Client({ url: "ldap://10.11.3.9:389" });
-  const userBind = `csf.co.id\\${username}`;
+  const userBind = `${username}@csf.co.id`;
 
   try {
     await client.bind(userBind, password);
